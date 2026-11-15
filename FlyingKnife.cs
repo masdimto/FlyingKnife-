@@ -1,4 +1,3 @@
-e
 using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
@@ -126,7 +125,7 @@ namespace FlyingKnifeBuffPlugin
                 Vector2 spawnPos = targetNpc.Center + offsets[dir];
                 Vector2 toTarget = targetNpc.Center - spawnPos;
                 toTarget.Normalize();
-                Vector2 velocity = toTarget * 22f; // Kecepatan tinggi menyayat musuh
+                Vector2 velocity = toTarget * 22f;
 
                 int projIdx = Projectile.NewProjectile(
                     player.GetProjectileSource_Item(player.HeldItem),
@@ -144,7 +143,7 @@ namespace FlyingKnifeBuffPlugin
                     proj.tileCollide = false;
                     proj.timeLeft = 60; // Tepat 1 detik (60 tick)
                     proj.usesLocalNPCImmunity = true;
-                    proj.localNPCHitCooldown = 6; // Mengikis musuh dengan sangat cepat (10x per detik)
+                    proj.localNPCHitCooldown = 6;
                     NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, projIdx);
 
                     activeCompassKnives.Add(new CompassKnifeData
@@ -179,7 +178,6 @@ namespace FlyingKnifeBuffPlugin
 
                 if (heldItem != null && heldItem.type == ItemID.FlyingKnife && player.controlUseItem && extraAttackCooldown[i] <= 0)
                 {
-                    // Setengah cooldown dari useTime normal = 2x kecepatan serangan efektif
                     int halfCooldown = Math.Max(4, heldItem.useTime / 2);
                     extraAttackCooldown[i] = halfCooldown;
 
@@ -198,7 +196,7 @@ namespace FlyingKnifeBuffPlugin
 
                     if (extraProj >= 0 && extraProj < Main.maxProjectiles)
                     {
-                        Main.projectile[extraProj].timeLeft = 24; // Pisau tambahan cepat menyayat
+                        Main.projectile[extraProj].timeLeft = 24;
                         NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, extraProj);
                     }
                 }
@@ -218,7 +216,6 @@ namespace FlyingKnifeBuffPlugin
 
                 Projectile proj = Main.projectile[data.ProjIndex];
 
-                // Hapus paksa jika waktu 1 detik (60 tick) habis atau proyektil sudah mati
                 if (data.TicksLeft <= 0 || !proj.active || proj.type != ProjectileID.FlyingKnife)
                 {
                     if (proj.active && proj.type == ProjectileID.FlyingKnife)
@@ -230,12 +227,10 @@ namespace FlyingKnifeBuffPlugin
                     continue;
                 }
 
-                // Jika musuh target masih hidup, arahkan pisau kompas bolak-balik cepat menyayat dari arah kompasnya
                 if (data.TargetNpcIndex >= 0 && data.TargetNpcIndex < Main.maxNPCs && Main.npc[data.TargetNpcIndex].active)
                 {
                     NPC target = Main.npc[data.TargetNpcIndex];
 
-                    // Osilasi cepat maju-mundur melewati titik tengah musuh sesuai arah mata angin (0=N, 1=E, 2=S, 3=W)
                     float wave = (float)Math.Sin((60 - data.TicksLeft) * 0.55f) * 65f;
                     Vector2 dirVec = data.DirectionIndex switch
                     {
