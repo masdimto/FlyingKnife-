@@ -221,7 +221,8 @@ namespace FlyingKnifeBuffPlugin
                     if (proj.active && proj.type == ProjectileID.FlyingKnife)
                     {
                         proj.Kill();
-                        NetMessage.SendData((int)PacketTypes.ProjectileKill, -1, -1, null, data.ProjIndex);
+                        NetMessage.SendData(29, -1, -1, null, proj.identity, proj.owner);
+                    
                     }
                     activeCompassKnives.RemoveAt(k);
                     continue;
