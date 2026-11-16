@@ -13,7 +13,7 @@ namespace FlyingKnifeBuffPlugin
     public class FlyingKnifeBuff : TerrariaPlugin
     {
         public override string Name => "FlyingKnifeBuff";
-        public override System.Version Version => new System.Version(1, 3, 0);
+        public override System.Version Version => new System.Version(1, 3, 1);
         public override string Author => "CustomPlugin";
         public override string Description => "Buff Flying Knife: 2x attack speed (-15% damage) dan 4 pisau formasi kompas setiap 4x damage selama 1 detik (reset 4 detik).";
 
@@ -148,7 +148,6 @@ namespace FlyingKnifeBuffPlugin
                 toTarget.Normalize();
                 Vector2 velocity = toTarget * 24f;
 
-                // Owner = Main.maxPlayers (255) + ProjectileID.ShadowFlameKnife (pisau berputar yang 100% muncul & tidak terhapus AI client)
                 int projIdx = Projectile.NewProjectile(
                     Projectile.GetNoneSource(),
                     spawnPos,
@@ -284,15 +283,16 @@ namespace FlyingKnifeBuffPlugin
                     proj.Center = desiredPos;
                     proj.timeLeft = data.TicksLeft;
 
-                    // Berikan damage langsung setiap 8 tick jika pisau melewati badan musuh (agar tetap sakit walau owner=255)
+                    // Berikan damage langsung setiap 8 tick jika pisau melewati badan musuh
                     if (data.TicksLeft % 8 == 0 && proj.Hitbox.Intersects(target.Hitbox))
                     {
-                        target.StrikeNPC(data.Damage, 0f, 0, false, false, false);
+                        target.StrikeNPC(data.Damage, 0f, 0);
+                        NetMessage.SendData((int)PacketTypes.NpcStrike, -1, -1, null, target.whoAmI, data.Damage, 0f, 0f, 0);
                     }
 
                     if (data.TicksLeft % 3 == 0)
                     {
-                        NetMessage.SendData((int)PacketTypes.ProjectileDestroy, -1, -1, null, proj.whoAmI, proj.owner);
+                        NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, data.ProjIndex);
                     }
                 }
             }
