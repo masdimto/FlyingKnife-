@@ -13,17 +13,18 @@ namespace FlyingKnifeBuffPlugin
     public class FlyingKnifeBuff : TerrariaPlugin
     {
         public override string Name => "FlyingKnifeBuff";
-        public override System.Version Version => new System.Version(1, 1, 0);
+        public override System.Version Version => new System.Version(1, 2, 0);
         public override string Author => "CustomPlugin";
-        public override string Description => "Buff Flying Knife: 2x attack speed (-15% damage) dan memanggil 4 pisau formasi kompas setiap 4x damage selama 1 detik (reset 4 detik).";
+        public override string Description => "Buff Flying Knife: 2x attack speed (-15% damage) dan memanggil 4 Flying Knife formasi kompas setiap 4x damage selama 1 detik (reset 4 detik).";
 
         private class CompassKnifeData
         {
             public int ProjIndex;
             public int TargetNpcIndex;
-            public int OwnerIndex;
+            public int OwnerPlayerIndex;
             public int DirectionIndex; // 0 = Utara, 1 = Timur, 2 = Selatan, 3 = Barat
             public int TicksLeft;
+            public int Damage;
         }
 
         private int[] hitCounter = new int[Main.maxPlayers];
@@ -60,7 +61,7 @@ namespace FlyingKnifeBuffPlugin
 
         private void CheckStatusCommand(CommandArgs args)
         {
-            args.Player.SendSuccessMessage("[FlyingKnifeBuff] Aktif! Attack speed 2x (-15% damage), setiap 4x damage memanggil 4 pisau kompas selama 1 detik (reset 4 detik).");
+            args.Player.SendSuccessMessage("[FlyingKnifeBuff] Aktif! Attack speed 2x (-15% damage), setiap 4x damage memanggil 4 Flying Knife kompas selama 1 detik (reset 4 detik).");
         }
 
         private void OnServerJoin(JoinEventArgs args)
@@ -102,7 +103,6 @@ namespace FlyingKnifeBuffPlugin
                 Player player = tsPlayer.TPlayer;
                 Item heldItem = player.HeldItem;
 
-                // Pastikan pemain sedang memegang Flying Knife
                 if (heldItem == null || heldItem.type != ItemID.FlyingKnife)
                     return;
 
@@ -112,11 +112,10 @@ namespace FlyingKnifeBuffPlugin
                     short npcId = reader.ReadInt16();
                     short damage = reader.ReadInt16();
 
-                    // Abaikan jika bukan serangan damage valid (misal damage <= 0)
                     if (damage <= 0 || npcId < 0 || npcId >= Main.maxNPCs || !Main.npc[npcId].active)
                         return;
 
-                    // Reset timer 4 detik (240 tick) setiap kali berhasil memberikan damage
+                    // Reset timer 4 detik (240 tick) setiap kali memberikan damage
                     resetTimerTicks[plrIdx] = 240;
                     hitCounter[plrIdx]++;
 
@@ -137,10 +136,10 @@ namespace FlyingKnifeBuffPlugin
             // 4 Arah Kompas: Utara (Atas), Timur (Kanan), Selatan (Bawah), Barat (Kiri)
             Vector2[] offsets = new Vector2[]
             {
-                new Vector2(0f, -100f),  // 0: Utara
-                new Vector2(100f, 0f),   // 1: Timur
-                new Vector2(0f, 100f),   // 2: Selatan
-                new Vector2(-100f, 0f)   // 3: Barat
+                new Vector2(0f, -90f),  // 0: Utara
+                new Vector2(90f, 0f),   // 1: Timur
+                new Vector2(0f, 90f),   // 2: Selatan
+                new Vector2(-90f, 0f)   // 3: Barat
             };
 
             for (int dir = 0; dir < 4; dir++)
@@ -148,36 +147,39 @@ namespace FlyingKnifeBuffPlugin
                 Vector2 spawnPos = targetNpc.Center + offsets[dir];
                 Vector2 toTarget = targetNpc.Center - spawnPos;
                 toTarget.Normalize();
-                Vector2 velocity = toTarget * 24f;
+                Vector2 velocity = toTarget * 22f;
 
-                // Gunakan ProjectileID.MagicDagger agar visual pisau tajam tampil stabil di client & tidak langsung hilang
+                // Owner = Main.maxPlayers (255 / Server) agar client HP tidak menghapus proyektil FlyingKnife secara lokal
                 int projIdx = Projectile.NewProjectile(
                     player.GetProjectileSource_Item(player.HeldItem),
                     spawnPos,
                     velocity,
-                    ProjectileID.MagicDagger,
+                    ProjectileID.FlyingKnife,
                     damage,
-                    knockBack * 0.2f,
-                    player.whoAmI
+                    knockBack * 0.1f,
+                    Main.maxPlayers
                 );
 
                 if (projIdx >= 0 && projIdx < Main.maxProjectiles)
                 {
                     Projectile proj = Main.projectile[projIdx];
+                    proj.friendly = true;
+                    proj.hostile = false;
                     proj.tileCollide = false;
                     proj.penetrate = -1;
                     proj.timeLeft = 60; // Tepat 1 detik (60 tick)
                     proj.usesLocalNPCImmunity = true;
-                    proj.localNPCHitCooldown = 6; // Mengikis musuh dengan sangat cepat (10x per detik)
+                    proj.localNPCHitCooldown = 6;
                     NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, projIdx);
 
                     activeCompassKnives.Add(new CompassKnifeData
                     {
                         ProjIndex = projIdx,
                         TargetNpcIndex = targetNpc.whoAmI,
-                        OwnerIndex = player.whoAmI,
+                        OwnerPlayerIndex = player.whoAmI,
                         DirectionIndex = dir,
-                        TicksLeft = 60
+                        TicksLeft = 60,
+                        Damage = damage
                     });
                 }
             }
@@ -187,7 +189,7 @@ namespace FlyingKnifeBuffPlugin
         {
             for (int i = 0; i < Main.maxPlayers; i++)
             {
-                // 1. Hitung mundur 4 detik (240 tick) reset kombo tebasan
+                // 1. Timer reset 4 detik (240 tick)
                 if (resetTimerTicks[i] > 0)
                 {
                     resetTimerTicks[i]--;
@@ -197,7 +199,7 @@ namespace FlyingKnifeBuffPlugin
                     }
                 }
 
-                // 2. Simulasi 2x Attack Speed (-15% damage) saat menggunakan Flying Knife
+                // 2. Simulasi 2x Attack Speed (-15% damage)
                 if (extraAttackCooldown[i] > 0)
                     extraAttackCooldown[i]--;
 
@@ -223,21 +225,24 @@ namespace FlyingKnifeBuffPlugin
                         player.GetProjectileSource_Item(heldItem),
                         player.MountedCenter,
                         shootVel,
-                        ProjectileID.MagicDagger,
+                        ProjectileID.FlyingKnife,
                         nerfedDamage,
                         heldItem.knockBack * 0.5f,
-                        player.whoAmI
+                        Main.maxPlayers
                     );
 
                     if (extraProj >= 0 && extraProj < Main.maxProjectiles)
                     {
-                        Main.projectile[extraProj].timeLeft = 35;
+                        Projectile ep = Main.projectile[extraProj];
+                        ep.friendly = true;
+                        ep.hostile = false;
+                        ep.timeLeft = 28;
                         NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, extraProj);
                     }
                 }
             }
 
-            // 3. Gerakkan 4 Pisau Kompas bolak-balik cepat mengikis musuh selama 1 detik (60 tick)
+            // 3. Paksa gerakan & render 4 Flying Knife Kompas selama 1 detik (60 tick)
             for (int k = activeCompassKnives.Count - 1; k >= 0; k--)
             {
                 CompassKnifeData data = activeCompassKnives[k];
@@ -251,9 +256,9 @@ namespace FlyingKnifeBuffPlugin
 
                 Projectile proj = Main.projectile[data.ProjIndex];
 
-                if (data.TicksLeft <= 0 || !proj.active || proj.type != ProjectileID.MagicDagger)
+                if (data.TicksLeft <= 0 || !proj.active || proj.type != ProjectileID.FlyingKnife)
                 {
-                    if (proj.active && proj.type == ProjectileID.MagicDagger)
+                    if (proj.active && proj.type == ProjectileID.FlyingKnife)
                     {
                         proj.Kill();
                         NetMessage.SendData((int)PacketTypes.ProjectileDestroy, -1, -1, null, proj.whoAmI, proj.owner);
@@ -266,8 +271,8 @@ namespace FlyingKnifeBuffPlugin
                 {
                     NPC target = Main.npc[data.TargetNpcIndex];
 
-                    // Gerakan cepat menembus titik tengah target dari 4 arah mata angin
-                    float wave = (float)Math.Cos((60 - data.TicksLeft) * 0.65f) * 80f;
+                    // Gerakan cepat bolak-balik menembus pusat musuh dari 4 arah mata angin
+                    float wave = (float)Math.Cos((60 - data.TicksLeft) * 0.65f) * 75f;
                     Vector2 dirVec = data.DirectionIndex switch
                     {
                         0 => new Vector2(0f, -1f), // Utara
@@ -277,9 +282,16 @@ namespace FlyingKnifeBuffPlugin
                     };
 
                     Vector2 desiredPos = target.Center + dirVec * wave;
-                    proj.velocity = (desiredPos - proj.Center) * 0.75f;
-                    proj.rotation = proj.velocity.ToRotation() + MathHelper.PiOver2;
-                    proj.netUpdate = true;
+                    proj.velocity = (desiredPos - proj.Center) * 0.8f;
+                    proj.Center = desiredPos;
+                    proj.rotation = dirVec.ToRotation() + MathHelper.PiOver2;
+                    proj.timeLeft = data.TicksLeft;
+
+                    // Kirim paket ProjectileNew setiap 3 tick agar client HP terus menggambar posisi baru pisau
+                    if (data.TicksLeft % 3 == 0)
+                    {
+                        NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, data.ProjIndex);
+                    }
                 }
             }
         }
