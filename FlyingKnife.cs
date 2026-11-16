@@ -292,7 +292,7 @@ namespace FlyingKnifeBuffPlugin
 
                     if (data.TicksLeft % 3 == 0)
                     {
-                        NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, data.ProjIndex);
+                        NetMessage.SendData((int)PacketTypes.ProjectileDestroy, -1, -1, null, proj.whoAmI, proj.owner);
                     }
                 }
             }
