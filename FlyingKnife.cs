@@ -13,15 +13,14 @@ namespace FlyingKnifeBuffPlugin
     public class FlyingKnifeBuff : TerrariaPlugin
     {
         public override string Name => "FlyingKnifeBuff";
-        public override System.Version Version => new System.Version(1, 2, 0);
+        public override System.Version Version => new System.Version(1, 3, 0);
         public override string Author => "CustomPlugin";
-        public override string Description => "Buff Flying Knife: 2x attack speed (-15% damage) dan memanggil 4 Flying Knife formasi kompas setiap 4x damage selama 1 detik (reset 4 detik).";
+        public override string Description => "Buff Flying Knife: 2x attack speed (-15% damage) dan 4 pisau formasi kompas setiap 4x damage selama 1 detik (reset 4 detik).";
 
         private class CompassKnifeData
         {
             public int ProjIndex;
             public int TargetNpcIndex;
-            public int OwnerPlayerIndex;
             public int DirectionIndex; // 0 = Utara, 1 = Timur, 2 = Selatan, 3 = Barat
             public int TicksLeft;
             public int Damage;
@@ -61,7 +60,7 @@ namespace FlyingKnifeBuffPlugin
 
         private void CheckStatusCommand(CommandArgs args)
         {
-            args.Player.SendSuccessMessage("[FlyingKnifeBuff] Aktif! Attack speed 2x (-15% damage), setiap 4x damage memanggil 4 Flying Knife kompas selama 1 detik (reset 4 detik).");
+            args.Player.SendSuccessMessage("[FlyingKnifeBuff] Aktif! Attack speed 2x (-15% damage), setiap 4x damage memanggil 4 pisau kompas selama 1 detik (reset 4 detik).");
         }
 
         private void OnServerJoin(JoinEventArgs args)
@@ -89,7 +88,7 @@ namespace FlyingKnifeBuffPlugin
             if (args.Handled || args.Msg.whoAmI < 0 || args.Msg.whoAmI >= Main.maxPlayers)
                 return;
 
-            // Packet 28: NpcStrike (dikirim client setiap kali serangan mengenai musuh)
+            // Packet 28: NpcStrike
             if (args.MsgID == PacketTypes.NpcStrike)
             {
                 int plrIdx = args.Msg.whoAmI;
@@ -136,10 +135,10 @@ namespace FlyingKnifeBuffPlugin
             // 4 Arah Kompas: Utara (Atas), Timur (Kanan), Selatan (Bawah), Barat (Kiri)
             Vector2[] offsets = new Vector2[]
             {
-                new Vector2(0f, -90f),  // 0: Utara
-                new Vector2(90f, 0f),   // 1: Timur
-                new Vector2(0f, 90f),   // 2: Selatan
-                new Vector2(-90f, 0f)   // 3: Barat
+                new Vector2(0f, -95f),  // 0: Utara
+                new Vector2(95f, 0f),   // 1: Timur
+                new Vector2(0f, 95f),   // 2: Selatan
+                new Vector2(-95f, 0f)   // 3: Barat
             };
 
             for (int dir = 0; dir < 4; dir++)
@@ -147,14 +146,14 @@ namespace FlyingKnifeBuffPlugin
                 Vector2 spawnPos = targetNpc.Center + offsets[dir];
                 Vector2 toTarget = targetNpc.Center - spawnPos;
                 toTarget.Normalize();
-                Vector2 velocity = toTarget * 22f;
+                Vector2 velocity = toTarget * 24f;
 
-                // Owner = Main.maxPlayers (255 / Server) agar client HP tidak menghapus proyektil FlyingKnife secara lokal
+                // Owner = Main.maxPlayers (255) + ProjectileID.ShadowFlameKnife (pisau berputar yang 100% muncul & tidak terhapus AI client)
                 int projIdx = Projectile.NewProjectile(
-                    player.GetProjectileSource_Item(player.HeldItem),
+                    Projectile.GetNoneSource(),
                     spawnPos,
                     velocity,
-                    ProjectileID.FlyingKnife,
+                    ProjectileID.ShadowFlameKnife,
                     damage,
                     knockBack * 0.1f,
                     Main.maxPlayers
@@ -176,7 +175,6 @@ namespace FlyingKnifeBuffPlugin
                     {
                         ProjIndex = projIdx,
                         TargetNpcIndex = targetNpc.whoAmI,
-                        OwnerPlayerIndex = player.whoAmI,
                         DirectionIndex = dir,
                         TicksLeft = 60,
                         Damage = damage
@@ -219,13 +217,13 @@ namespace FlyingKnifeBuffPlugin
                     extraAttackCooldown[i] = halfCooldown;
 
                     int nerfedDamage = Math.Max(1, (int)(player.GetWeaponDamage(heldItem) * 0.85f));
-                    Vector2 shootVel = new Vector2(player.direction * 20f, -2f);
+                    Vector2 shootVel = new Vector2(player.direction * 22f, -2f);
 
                     int extraProj = Projectile.NewProjectile(
-                        player.GetProjectileSource_Item(heldItem),
+                        Projectile.GetNoneSource(),
                         player.MountedCenter,
                         shootVel,
-                        ProjectileID.FlyingKnife,
+                        ProjectileID.ShadowFlameKnife,
                         nerfedDamage,
                         heldItem.knockBack * 0.5f,
                         Main.maxPlayers
@@ -236,13 +234,13 @@ namespace FlyingKnifeBuffPlugin
                         Projectile ep = Main.projectile[extraProj];
                         ep.friendly = true;
                         ep.hostile = false;
-                        ep.timeLeft = 28;
+                        ep.timeLeft = 35;
                         NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, extraProj);
                     }
                 }
             }
 
-            // 3. Paksa gerakan & render 4 Flying Knife Kompas selama 1 detik (60 tick)
+            // 3. Gerakkan 4 Pisau Kompas selama 1 detik (60 tick) & pastikan damage masuk ke target
             for (int k = activeCompassKnives.Count - 1; k >= 0; k--)
             {
                 CompassKnifeData data = activeCompassKnives[k];
@@ -256,9 +254,9 @@ namespace FlyingKnifeBuffPlugin
 
                 Projectile proj = Main.projectile[data.ProjIndex];
 
-                if (data.TicksLeft <= 0 || !proj.active || proj.type != ProjectileID.FlyingKnife)
+                if (data.TicksLeft <= 0 || !proj.active || proj.type != ProjectileID.ShadowFlameKnife)
                 {
-                    if (proj.active && proj.type == ProjectileID.FlyingKnife)
+                    if (proj.active && proj.type == ProjectileID.ShadowFlameKnife)
                     {
                         proj.Kill();
                         NetMessage.SendData((int)PacketTypes.ProjectileDestroy, -1, -1, null, proj.whoAmI, proj.owner);
@@ -271,8 +269,8 @@ namespace FlyingKnifeBuffPlugin
                 {
                     NPC target = Main.npc[data.TargetNpcIndex];
 
-                    // Gerakan cepat bolak-balik menembus pusat musuh dari 4 arah mata angin
-                    float wave = (float)Math.Cos((60 - data.TicksLeft) * 0.65f) * 75f;
+                    // Gerakan cepat maju-mundur menyayat dari 4 arah mata angin
+                    float wave = (float)Math.Cos((60 - data.TicksLeft) * 0.65f) * 80f;
                     Vector2 dirVec = data.DirectionIndex switch
                     {
                         0 => new Vector2(0f, -1f), // Utara
@@ -282,12 +280,16 @@ namespace FlyingKnifeBuffPlugin
                     };
 
                     Vector2 desiredPos = target.Center + dirVec * wave;
-                    proj.velocity = (desiredPos - proj.Center) * 0.8f;
+                    proj.velocity = (desiredPos - proj.Center) * 0.85f;
                     proj.Center = desiredPos;
-                    proj.rotation = dirVec.ToRotation() + MathHelper.PiOver2;
                     proj.timeLeft = data.TicksLeft;
 
-                    // Kirim paket ProjectileNew setiap 3 tick agar client HP terus menggambar posisi baru pisau
+                    // Berikan damage langsung setiap 8 tick jika pisau melewati badan musuh (agar tetap sakit walau owner=255)
+                    if (data.TicksLeft % 8 == 0 && proj.Hitbox.Intersects(target.Hitbox))
+                    {
+                        target.StrikeNPC(data.Damage, 0f, 0, false, false, false);
+                    }
+
                     if (data.TicksLeft % 3 == 0)
                     {
                         NetMessage.SendData((int)PacketTypes.ProjectileNew, -1, -1, null, data.ProjIndex);
